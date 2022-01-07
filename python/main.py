@@ -1,28 +1,15 @@
-from typing import Dict, List, Tuple
-from typing_extensions import IntVar, runtime
+from typing import List 
+from typing_extensions import IntVar
+
+from constants import *
 import pygame
-from pygame.constants import QUIT
-
-# Colors
-WHITE = (233,233,233)
-LIGHT_BLUE = (150,150,200)
-DARK_BLUE = (50,50, 150)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-PURPLE = (128, 0, 128)
-ORANGE = (255, 165, 0)
-GREY = (128, 128, 128)
-TURQOISE = (64, 224, 208)
-# Game State
-WIDTH = 900
-HEIGHT = 600
+import math
 
 
-
+class Player:
+    current_turn = 1
+    HUMAN = 1
+    AI = 2
 class Square:
     def __init__(self, x , y, w, h, state = ""):
         self.x     = x
@@ -53,11 +40,12 @@ class Board:
             if not square.state:
                 return False
         return True
-    def reset(self):
+    def reset(self,turn_text):
         self.squares = []
         self.create_squares()
         Board.is_game_over = False
         Board.is_X_turn = True
+        play_computer_move(self,turn_text)
     def check_win(self):
         # check if the game is over
         lines = [
@@ -146,17 +134,98 @@ class Button:
                 return True
         return False
 
+def is_game_over(board_arr):
+    if is_draw(board_arr):
+        return "TIE"
+    lines = [
+        [0,1,2],
+        [3,4,5],
+        [6,7,8],
+        [0,3,6],
+        [1,4,7],
+        [2,5,8],
+        [0,4,8],
+        [2,4,6]   
+    ]
+    for line in lines:
+        if (board_arr[line[0]] != "" and board_arr[line[1]]  != "" and board_arr[line[2]]  != "" ):
+            if (board_arr[line[0]]==board_arr[line[1]] and board_arr[line[1]]==board_arr[line[2]]):
+                return board_arr[line[0]]
+    return None
+def is_draw(board_arr):
+    for s in board_arr:
+        if s == "":
+            return False
+    return True
+def oneD_to_twoD(arr,n):
+    matrix = [[] for _ in range(n)]
+    x = 0
+    j = 0
+    for i in arr:
+        matrix[x].append(i)
+        j+=1
+        if j==n:
+            j=0
+            x+=1
+    return matrix
+def minimax(board_arr,depth,isMaximizing):
+    if is_game_over(board_arr) != None:
+        return SCORES[is_game_over(board_arr)]
+
+    if(isMaximizing):
+        best_score = - math.inf
+        for i in range(len(board_arr)):
+            if board_arr[i] == "":
+                board_arr[i] = "O"
+                score = minimax(board_arr, depth - 1, False)
+                board_arr[i] = "" 
+                best_score = max(score, best_score)
+        return best_score
+    else:
+        best_score = math.inf
+        for i in range(len(board_arr)):
+            if board_arr[i] == "":
+                board_arr[i] = "X"
+                score = minimax(board_arr, depth -1, False)
+                board_arr[i] = ""
+                best_score = min(score, best_score)
+        return best_score
+def generate_move(board_squares):
+    # board is a 1d representation of the state of the board
+    board = [square.state for square in board_squares]
+    best_score = -math.inf
+    best_move = 0
+    for i in range(len(board)):
+        if(board[i] == ''):
+            board[i] = "X"
+            depth = len([i for i in board if i == ""])
+            score = minimax(board, depth , True)
+            board[i] = ""
+            if(score > best_score):
+                best_score = score
+                best_move = i
+    return best_move
+def play_computer_move(board,turn_text):
+    square_index = generate_move(board.squares)
+    board.squares[square_index].state = "X"
+    turn_text.update("O's Turn" if Board.is_X_turn else "X's Turn")
+    if board.check_win():
+        turn_text.text = "X Wins" if Board.is_X_turn else "O Wins"
+    if board.is_draw():
+        turn_text.update("Draw")
+    Board.is_X_turn = not Board.is_X_turn
+    Player.current_turn = Player.HUMAN
 def main():
     pygame.init()
     pygame.font.init()
     pygame.display.set_caption("Tic Tac Toe")
     window = pygame.display.set_mode((WIDTH, HEIGHT))
-
     board= Board()
     board.create_squares()
     turn_text = Text_Box(WIDTH / 2 + 200, HEIGHT / 2 - 100, 200, 200, "X's Turn")
     reset_button = Button(WIDTH / 2 + 200, HEIGHT / 2 + 150, 200, 50, "Reset")
     running = True 
+    play_computer_move(board, turn_text)
     while running:
         board.draw(window)
         turn_text.draw(window)
@@ -169,27 +238,38 @@ def main():
             if event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
                 if reset_button.is_clicked(pos):
-                    board.reset()
+                    board.reset(turn_text)
                     Board.is_X_turn = False
                     turn_text.update("X's Turn")
                 else:
                     for square in board.squares:
                         if square.state == "":
                             if board.is_game_over == False:
-                                if square.x < pos[0] < square.x + square.w and square.y < pos[1] < square.y + square.h:
-                                    square.state = "X" if board.is_X_turn else "O"
-                                    turn_text.update("O's Turn" if board.is_X_turn else "X's Turn")
-                                    if board.check_win():
-                                        turn_text.text = "X Wins" if board.is_X_turn else "O Wins"
+                                if Player.current_turn == Player.HUMAN:
+                                    if square.x < pos[0] < square.x + square.w and square.y < pos[1] < square.y + square.h:
+                                        square.state = "X" if Board.is_X_turn else "O"
+                                        turn_text.update("O's Turn" if Board.is_X_turn else "X's Turn")
+                                        if board.check_win():
+                                            turn_text.text = "X Wins" if Board.is_X_turn else "O Wins"
+                                            Board.is_X_turn = not Board.is_X_turn
+                                            break
+                                        if board.is_draw():
+                                            turn_text.update("Draw")
+                                            break
+                                        Board.is_X_turn = not Board.is_X_turn
+                                        Player.current_turn = Player.AI
+                                        play_computer_move(board, turn_text)
+                                        if board.check_win():
+                                            board.is_X_turn = not board.is_X_turn
+                                            turn_text.text = "X Wins" if board.is_X_turn else "O Wins"
+
+                                            break
+                                        if board.is_draw():
+                                            turn_text.update("Draw")
+                                            break
                                         break
-                                    if board.is_draw():
-                                        turn_text.update("Draw")
-                                        break
-                                    board.is_X_turn = not board.is_X_turn
-                                    break
         pygame.display.update()
         
     pygame.quit()
-
 if __name__ == "__main__":
     main()
